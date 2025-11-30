@@ -12,6 +12,8 @@ from datetime import date
 from tkinter import messagebox  
 from datetime import datetime
 import pandas as pd
+from tkinter import filedialog
+
 
 #====Kết nối database=====
 try:
@@ -1004,6 +1006,7 @@ for b in buttons:
 # ------------------------------
 load_xe()
 
+
 # ==============================
 # TAB CHUYẾN ĐI
 # ==============================
@@ -1011,7 +1014,6 @@ tab_trip = tk.Frame(content_frame, bg="#ecf0f1")
 pages["ChuyenDi"] = tab_trip
 
 tk.Label(tab_trip, text="QUẢN LÝ CHUYẾN ĐI", font=("Arial", 18, "bold"), bg="#ecf0f1").pack(pady=10)
-
 
 # ======================================================================
 # FORM NHẬP LIỆU
@@ -1041,11 +1043,13 @@ entry_trip_to = tk.Entry(form_frame_trip, width=25)
 entry_trip_to.grid(row=2, column=1, padx=10, pady=8)
 
 tk.Label(form_frame_trip, text="Ngày đi:", bg="#ecf0f1").grid(row=2, column=2, padx=10, pady=8, sticky="e")
-entry_trip_start = tk.Entry(form_frame_trip, width=25)
+entry_trip_start = DateEntry(form_frame_trip, width=23, background='darkblue',
+                             foreground='white', date_pattern='yyyy-mm-dd')
 entry_trip_start.grid(row=2, column=3, padx=10, pady=8)
 
 tk.Label(form_frame_trip, text="Ngày về:", bg="#ecf0f1").grid(row=3, column=0, padx=10, pady=8, sticky="e")
-entry_trip_end = tk.Entry(form_frame_trip, width=25)
+entry_trip_end = DateEntry(form_frame_trip, width=23, background='darkblue',
+                           foreground='white', date_pattern='yyyy-mm-dd')
 entry_trip_end.grid(row=3, column=1, padx=10, pady=8)
 
 tk.Label(form_frame_trip, text="Trạng thái:", bg="#ecf0f1").grid(row=3, column=2, padx=10, pady=8, sticky="e")
@@ -1054,162 +1058,92 @@ combo_trip_status['values'] = ["Chưa khởi hành", "Đang đi", "Hoàn thành"
 combo_trip_status.grid(row=3, column=3, padx=10, pady=8)
 
 
+
+#--------------
 # ======================================================================
-# LOAD COMBO
-# ======================================================================
-def load_combo_trip():
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT id, bien_so FROM xe")
-    combo_trip_xe["values"] = [f"{row[0]} - {row[1]}" for row in cursor.fetchall()]
-
-    cursor.execute("SELECT id, ten FROM laixe")
-    combo_trip_driver["values"] = [f"{row[0]} - {row[1]}" for row in cursor.fetchall()]
-
-
-# ======================================================================
-# TREEVIEW LOAD
-# ======================================================================
-def load_trip_treeview():
-    for row in tree_trip.get_children():
-        tree_trip.delete(row)
-
-    cursor = conn.cursor()
-    query = """
-        SELECT c.id, x.bien_so, l.ten,
-               c.noi_di, c.noi_den,
-               c.ngay_di, 
-               c.tinh_trang
-        FROM chuyendi c
-        JOIN xe x ON c.id_xe = x.id
-        JOIN laixe l ON c.id_laixe = l.id
-        ORDER BY c.id DESC
-    """
-    cursor.execute(query)
-
-    for r in cursor.fetchall():
-        tree_trip.insert("", "end", values=r)
-
-
-# ======================================================================
-# CLEAR FORM
+# HÀM CHỨC NĂNG
 # ======================================================================
 def clear_form_trip():
     entry_trip_id.config(state="normal")
     entry_trip_id.delete(0, tk.END)
+
     combo_trip_xe.set("")
     combo_trip_driver.set("")
+
     entry_trip_from.delete(0, tk.END)
     entry_trip_to.delete(0, tk.END)
+
+    # ❗ FIX LỖI: KHÔNG ĐƯỢC set_date("")
     entry_trip_start.delete(0, tk.END)
     entry_trip_end.delete(0, tk.END)
+
     combo_trip_status.set("")
 
-
-# ======================================================================
-# EDIT MODE
-# ======================================================================
-def edit_trip_mode():
-    selected = tree_trip.focus()
-    if not selected:
-        messagebox.showwarning("Thông báo", "Chọn 1 chuyến đi để sửa")
-        return
-
-    values = tree_trip.item(selected, "values")
-
-    entry_trip_id.config(state="normal")
-    entry_trip_id.delete(0, tk.END)
-    entry_trip_id.insert(0, values[0])
-    entry_trip_id.config(state="readonly")
-
-    combo_trip_xe.set(values[1])
-    combo_trip_driver.set(values[2])
-    entry_trip_from.delete(0, tk.END); entry_trip_from.insert(0, values[3])
-    entry_trip_to.delete(0, tk.END); entry_trip_to.insert(0, values[4])
-    entry_trip_start.delete(0, tk.END); entry_trip_start.insert(0, values[5])
-    combo_trip_status.set(values[6])
-
-
-# ======================================================================
-# SAVE
-# ======================================================================
 def save_trip():
     id_trip = entry_trip_id.get()
     xe = combo_trip_xe.get()
     laixe = combo_trip_driver.get()
     noi_di = entry_trip_from.get()
     noi_den = entry_trip_to.get()
-    ngay_di = entry_trip_start.get()
-    ngay_ve = entry_trip_end.get()
+    ngay_di = entry_trip_start.get_date()
+    ngay_ve = entry_trip_end.get_date()
     trang_thai = combo_trip_status.get()
 
-    if not xe or not laixe:
-        messagebox.showerror("Lỗi", "Xe và Lái xe không được để trống!")
+    if not xe or not laixe or not noi_di or not noi_den:
+        messagebox.showerror("Lỗi", "Vui lòng điền đầy đủ thông tin!")
         return
 
-    id_xe = xe.split(" - ")[0]
-    id_laixe = laixe.split(" - ")[0]
-
-    cursor = conn.cursor()
-
     if id_trip == "":
-        query = """
-            INSERT INTO chuyendi(id_xe, id_laixe, ngay_di, ngay_ve, noi_di, noi_den, tinh_trang)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        cursor.execute(query, (id_xe, id_laixe, ngay_di, ngay_ve, noi_di, noi_den, trang_thai))
+        # Tạo mã tự động
+        id_trip = str(len(tree_trip.get_children()) + 1)
     else:
-        query = """
-            UPDATE chuyendi SET 
-                id_xe=%s, id_laixe=%s, ngay_di=%s, ngay_ve=%s,
-                noi_di=%s, noi_den=%s, tinh_trang=%s
-            WHERE id=%s
-        """
-        cursor.execute(query, (id_xe, id_laixe, ngay_di, ngay_ve, noi_di, noi_den, trang_thai, id_trip))
+        # Xóa bản ghi cũ nếu sửa
+        for item in tree_trip.get_children():
+            if tree_trip.item(item, "values")[0] == id_trip:
+                tree_trip.delete(item)
+                break
 
-    conn.commit()
-    load_trip_treeview()
+    tree_trip.insert("", "end", values=(id_trip, xe, laixe, noi_di, noi_den, ngay_di, ngay_ve, trang_thai))
     clear_form_trip()
     messagebox.showinfo("Thành công", "Lưu chuyến đi thành công!")
 
+def edit_trip_mode():
+    selected = tree_trip.focus()
+    if not selected:
+        messagebox.showwarning("Thông báo", "Chọn 1 chuyến đi để sửa")
+        return
+    values = tree_trip.item(selected, "values")
+    entry_trip_id.config(state="normal")
+    entry_trip_id.delete(0, tk.END)
+    entry_trip_id.insert(0, values[0])
+    entry_trip_id.config(state="readonly")
+    combo_trip_xe.set(values[1])
+    combo_trip_driver.set(values[2])
+    entry_trip_from.delete(0, tk.END); entry_trip_from.insert(0, values[3])
+    entry_trip_to.delete(0, tk.END); entry_trip_to.insert(0, values[4])
+    entry_trip_start.set_date(values[5])
+    entry_trip_end.set_date(values[6])
+    combo_trip_status.set(values[7])
 
-# ======================================================================
-# DELETE
-# ======================================================================
 def delete_trip():
     selected = tree_trip.focus()
     if not selected:
         messagebox.showwarning("Thông báo", "Chọn chuyến đi để xóa!")
         return
-
-    id_trip = tree_trip.item(selected, "values")[0]
-
     if messagebox.askyesno("Xác nhận", "Bạn có chắc muốn xóa chuyến đi này?"):
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM chuyendi WHERE id=%s", (id_trip,))
-        conn.commit()
-        load_trip_treeview()
+        tree_trip.delete(selected)
         clear_form_trip()
         messagebox.showinfo("Thành công", "Đã xóa chuyến đi!")
 
-
-# ======================================================================
-# FINISH
-# ======================================================================
 def finish_trip():
     selected = tree_trip.focus()
     if not selected:
         messagebox.showwarning("Thông báo", "Chọn chuyến đi!")
         return
-
-    id_trip = tree_trip.item(selected, "values")[0]
-    cursor = conn.cursor()
-    cursor.execute("UPDATE chuyendi SET tinh_trang='Hoàn thành' WHERE id=%s", (id_trip,))
-    conn.commit()
-
-    load_trip_treeview()
+    values = list(tree_trip.item(selected, "values"))
+    values[7] = "Hoàn thành"
+    tree_trip.item(selected, values=values)
     messagebox.showinfo("OK", "Đã cập nhật trạng thái!")
-
 
 # ======================================================================
 # BUTTONS CĂN GIỮA
@@ -1220,6 +1154,9 @@ button_trip_frame.pack(fill="x", padx=20, pady=10)
 button_center = tk.Frame(button_trip_frame, bg="#ecf0f1")
 button_center.pack(anchor="center")
 
+# ======================================================================
+# NÚT BẤM
+# ======================================================================
 btn_trip_new = tk.Button(button_center, text="Thêm mới", width=12, bg="#27ae60", fg="white",
                          command=clear_form_trip)
 btn_trip_new.grid(row=0, column=0, padx=6)
@@ -1244,9 +1181,9 @@ btn_trip_exit = tk.Button(button_center, text="Thoát", width=12, bg="#2c3e50", 
                           command=root.quit)
 btn_trip_exit.grid(row=0, column=6, padx=6)
 
-# ======================================================================
-# TREEVIEW HIỂN THỊ
-# ======================================================================
+# ===========================
+# TREEVIEW + SCROLLBAR
+# ===========================
 tree_frame_trip = tk.Frame(tab_trip)
 tree_frame_trip.pack(fill="both", expand=True, padx=20, pady=5)
 
@@ -1260,19 +1197,39 @@ for col, head, w in zip(columns_trip, headers, widths):
     tree_trip.heading(col, text=head)
     tree_trip.column(col, width=w, anchor="center")
 
-tree_trip.pack(fill="both", expand=True)
-
+# Scrollbar dọc
 scroll_y_trip = ttk.Scrollbar(tree_frame_trip, orient="vertical", command=tree_trip.yview)
-tree_trip.configure(yscrollcommand=scroll_y_trip.set)
 scroll_y_trip.pack(side="right", fill="y")
 
+# Scrollbar ngang
 scroll_x_trip = ttk.Scrollbar(tree_frame_trip, orient="horizontal", command=tree_trip.xview)
-tree_trip.configure(xscrollcommand=scroll_x_trip.set)
 scroll_x_trip.pack(side="bottom", fill="x")
 
-from tkcalendar import DateEntry
-import pandas as pd
-from tkinter import messagebox, filedialog
+# Gắn scrollbar vào treeview
+tree_trip.configure(yscrollcommand=scroll_y_trip.set, xscrollcommand=scroll_x_trip.set)
+
+tree_trip.pack(fill="both", expand=True)
+
+
+# ======================================================================
+# DỮ LIỆU MẪU
+# ======================================================================
+sample_data = [
+    ("1", "101 - Xe tải A", "201 - Lái xe 1", "An Giang", "TP.HCM", "2025-12-01", "2025-12-02", "Chưa khởi hành"),
+    ("2", "102 - Xe tải B", "202 - Lái xe 2", "Cần Thơ", "Hà Nội", "2025-12-03", "2025-12-05", "Đang đi"),
+    ("3", "103 - Xe tải C", "203 - Lái xe 3", "Hải Phòng", "Đà Nẵng", "2025-12-06", "2025-12-07", "Hoàn thành")
+]
+
+for r in sample_data:
+    tree_trip.insert("", "end", values=r)
+
+# Combo mẫu
+combo_trip_xe['values'] = ["101 - Xe tải A", "102 - Xe tải B", "103 - Xe tải C"]
+combo_trip_driver['values'] = ["201 - Lái xe 1", "202 - Lái xe 2", "203 - Lái xe 3"]
+
+# ==============================
+# CHẠY APP
+# ==============================
 
 # ==============================
 # TAB THỐNG KÊ
@@ -1299,6 +1256,30 @@ tk.Label(filter_frame, text="Đến ngày:", bg="#ecf0f1").grid(row=0, column=2,
 entry_to_date = DateEntry(filter_frame, width=15, background='darkblue',
                           foreground='white', date_pattern='yyyy-mm-dd')
 entry_to_date.grid(row=0, column=3, padx=10, pady=8)
+
+# ==============================
+# TREEVIEW
+# ==============================
+tree_frame_tk = tk.Frame(tab_thongke)
+tree_frame_tk.pack(fill="both", expand=True, padx=20, pady=10)
+
+columns_tk = ("MaChuyen", "BienSo", "TenLaiXe", "NgayDi", "NoiDi", "NoiDen", "TinhTrang")
+headers = ["Mã chuyến", "Biển số xe", "Tên lái xe", "Ngày đi", "Nơi đi", "Nơi đến", "Tình trạng"]
+widths = [90, 90, 100, 100, 100, 100, 100]
+
+tree_thongke = ttk.Treeview(tree_frame_tk, columns=columns_tk, show="headings")
+for col, head, w in zip(columns_tk, headers, widths):
+    tree_thongke.heading(col, text=head)
+    tree_thongke.column(col, width=w, anchor="center")
+tree_thongke.pack(fill="both", expand=True, side="left")
+
+scroll_y = ttk.Scrollbar(tree_frame_tk, orient="vertical", command=tree_thongke.yview)
+scroll_y.pack(side="right", fill="y")
+tree_thongke.configure(yscrollcommand=scroll_y.set)
+
+scroll_x = ttk.Scrollbar(tab_thongke, orient="horizontal", command=tree_thongke.xview)
+scroll_x.pack(fill="x", padx=20)
+tree_thongke.configure(xscrollcommand=scroll_x.set)
 
 # ==============================
 # HÀM LỌC DỮ LIỆU
@@ -1355,68 +1336,65 @@ btn_export = tk.Button(filter_frame, text="Xuất Excel",
 btn_export.grid(row=0, column=5, padx=10, pady=8)
 
 # ==============================
-# TREEVIEW
-# ==============================
-tree_frame_tk = tk.Frame(tab_thongke)
-tree_frame_tk.pack(fill="both", expand=True, padx=20, pady=10)
-
-columns_tk = ("MaChuyen", "BienSo", "TenLaiXe", "NgayDi", "NoiDi", "NoiDen", "TinhTrang")
-headers = ["Mã chuyến", "Biển số xe", "Tên lái xe", "Ngày đi", "Nơi đi", "Nơi đến", "Tình trạng"]
-
-tree_thongke = ttk.Treeview(tree_frame_tk, columns=columns_tk, show="headings")
-widths = [90, 90, 100, 100, 100, 100, 100]
-
-for col, head, w in zip(columns_tk, headers, widths):
-    tree_thongke.heading(col, text=head)
-    tree_thongke.column(col, width=w, anchor="center")
-
-tree_thongke.pack(fill="both", expand=True, side="left")
-
-scroll_y = ttk.Scrollbar(tree_frame_tk, orient="vertical", command=tree_thongke.yview)
-scroll_y.pack(side="right", fill="y")
-tree_thongke.configure(yscrollcommand=scroll_y.set)
-
-scroll_x = ttk.Scrollbar(tab_thongke, orient="horizontal", command=tree_thongke.xview)
-scroll_x.pack(fill="x", padx=20)
-tree_thongke.configure(xscrollcommand=scroll_x.set)
-
-# ==============================
-# LOAD DỮ LIỆU BAN ĐẦU
+# HÀM LOAD DỮ LIỆU BAN ĐẦU
 # ==============================
 def load_thongke_all():
-   cursor = conn.cursor()
-query = """
-    SELECT c.id, x.bien_so, lx.ho_ten, c.ngay_di, c.noi_di, c.noi_den, c.tinh_trang
-    FROM chuyendi c
-    LEFT JOIN xe x ON c.id_xe = x.id
-    LEFT JOIN laixe lx ON c.id_laixe = lx.id
-    ORDER BY c.ngay_di
-"""
-cursor.execute(query)
-rows = cursor.fetchall()
+    cursor = conn.cursor()
+    query = """
+        SELECT c.id, x.bien_so, lx.ho_ten, c.ngay_di, c.noi_di, c.noi_den, c.tinh_trang
+        FROM chuyendi c
+        LEFT JOIN xe x ON c.id_xe = x.id
+        LEFT JOIN laixe lx ON c.id_laixe = lx.id
+        ORDER BY c.ngay_di
+    """
+    cursor.execute(query)
+    rows = cursor.fetchall()
 
-tree_thongke.delete(*tree_thongke.get_children())
-for r in rows:
-    tree_thongke.insert("", tk.END, values=r)
+    tree_thongke.delete(*tree_thongke.get_children())
+    for r in rows:
+        tree_thongke.insert("", tk.END, values=r)
 
+# ==============================
+# THÊM DỮ LIỆU MẪU CHỈ KHI BẢNG TRỐNG
+# ==============================
 def add_sample_data():
     cursor = conn.cursor()
-    # Thêm dữ liệu mẫu vào bảng xe
-    cursor.execute("INSERT IGNORE INTO xe (id, bien_so, loai_xe, suc_chua, nam_sx, tinh_trang) VALUES (1, '51A-12345', 'Xe tải', 30, 2020, 'Tốt')")
-    cursor.execute("INSERT IGNORE INTO xe (id, bien_so, loai_xe, suc_chua, nam_sx, tinh_trang) VALUES (2, '51B-54321', 'Xe khách', 45, 2019, 'Tốt')")
-    conn.commit()
-
-
-
-def add_sample_trip():
+    cursor.execute("SELECT COUNT(*) FROM xe")
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            INSERT INTO xe (id, bien_so, loai_xe, suc_chua, nam_sx, tinh_trang)
+            VALUES 
+            (1, '51A-12345', 'Xe tải', 30, 2020, 'Tốt'),
+            (2, '51B-54321', 'Xe khách', 45, 2019, 'Tốt')
+        """)
+        conn.commit()
+def load_thongke_all():
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO chuyendi (id_xe, id_laixe, ngay_di, noi_di, noi_den, tinh_trang) VALUES (1, 1, '2025-11-01', 'TP.HCM', 'Hà Nội', 'Chưa khởi hành')")
-    cursor.execute("INSERT INTO chuyendi (id_xe, id_laixe, ngay_di, noi_di, noi_den, tinh_trang) VALUES (2, 2, '2025-11-05', 'Cần Thơ', 'Đà Nẵng', 'Hoàn thành')")
-    conn.commit()
+    query = """
+        SELECT c.id, x.bien_so, lx.ho_ten, c.ngay_di, c.noi_di, c.noi_den, c.tinh_trang
+        FROM chuyendi c
+        LEFT JOIN xe x ON c.id_xe = x.id
+        LEFT JOIN laixe lx ON c.id_laixe = lx.id
+        ORDER BY c.ngay_di
+    """
+    cursor.execute(query)
+    rows = cursor.fetchall()
 
+    # Xóa toàn bộ dữ liệu hiện tại trong Treeview trước khi load
+    tree_thongke.delete(*tree_thongke.get_children())
+
+    # Thêm dữ liệu mới vào Treeview
+    for r in rows:
+        tree_thongke.insert("", tk.END, values=r)
+
+
+
+# ==============================
+# KHỞI TẠO TAB
+# ==============================
 add_sample_data()
-add_sample_trip()
 load_thongke_all()
+
 
 # SIDEBAR BUTTONS
 # ==========================
