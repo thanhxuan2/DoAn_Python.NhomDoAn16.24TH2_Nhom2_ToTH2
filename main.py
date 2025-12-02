@@ -1432,3 +1432,4 @@ for text, page_name in menu_items:
 # Hiển thị Home mặc định
 show_page("Home") 
 root.mainloop()
+#==
